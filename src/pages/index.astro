@@ -49,7 +49,12 @@ try {
 	articles = (result.results ?? []) as Article[];
 } catch (error) {
 	databaseAvailable = false;
-	console.error('读取文章目录失败', error);
+
+	const errorMessage = error instanceof Error
+		? `${error.name}: ${error.message}`
+		: String(error);
+
+	console.error(`读取文章目录失败: ${errorMessage}`);
 }
 ---
 
