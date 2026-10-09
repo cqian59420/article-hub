@@ -1,6 +1,6 @@
 ---
 import BaseHead from '../components/BaseHead.astro';
-
+import { env } from 'cloudflare:workers';
 export const prerender = false;
 
 type Article = {
@@ -22,29 +22,22 @@ type ArticleDatabase = {
 		};
 	};
 };
-
-const { env } = Astro.locals as unknown as {
-	runtime: {
-		env: {
-			DB: ArticleDatabase;
-		};
-	};
-};
+const database = env.DB as unknown as ArticleDatabase;
 
 let articles: Article[] = [];
 let databaseAvailable = true;
 
 try {
-	const result = await env.DB
-		.prepare(
-			`SELECT id, title, summary, source_url, cover_url, category, tags, published_at, click_count
-			FROM articles
-			WHERE status = ?
-			ORDER BY featured_score DESC, click_count DESC, created_at DESC
-			LIMIT 24`,
-		)
-		.bind('published')
-		.all();
+	const result = await database
+	.prepare(
+		`SELECT id, title, summary, source_url, cover_url, category, tags, published_at, click_count
+		FROM articles
+		WHERE status = ?
+		ORDER BY featured_score DESC, click_count DESC, created_at DESC
+		LIMIT 24`,
+	)
+	.bind('published')
+	.all();
 
 	articles = (result.results ?? []) as Article[];
 } catch (error) {
