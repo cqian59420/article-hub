@@ -59,7 +59,10 @@ try {
 	<body>
 		<header class="site-header">
 			<a class="brand" href="/">文章导航</a>
-			<span>发现 · 分类 · 阅读</span>
+			<div class="header-actions">
+				<span>发现 · 分类 · 阅读</span>
+				<button type="button" class="publish-button" id="publish-button">发布</button>
+			</div>
 		</header>
 
 		<main>
@@ -88,7 +91,7 @@ try {
 							{
 								articles.map((article) => (
 									<article class="article-card">
-										<a href={article.source_url} target="_blank" rel="noreferrer">
+										<a href={`/api/click?id=${article.id}`} target="_blank" rel="noreferrer">
 											{
 												article.cover_url ? (
 													<img src={article.cover_url} alt="" loading="lazy" />
@@ -118,8 +121,110 @@ try {
 		</main>
 
 		<footer>文章正文及版权归原公众号作者所有。</footer>
+
+		<dialog id="publish-dialog" class="publish-dialog">
+			<form id="publish-form">
+				<h2>发布文章</h2>
+				<p class="dialog-hint">粘贴微信公众号文章链接，自动抓取标题与摘要后收录。</p>
+				<label class="field">
+					<span>文章链接</span>
+					<input type="url" name="url" id="publish-url" placeholder="https://mp.weixin.qq.com/s/..." required />
+				</label>
+				<label class="field">
+					<span>发布口令</span>
+					<input type="password" name="token" id="publish-token" placeholder="首次发布需要填写" autocomplete="off" />
+				</label>
+				<p class="dialog-error" id="publish-error" hidden></p>
+				<div class="dialog-actions">
+					<button type="button" class="button-ghost" id="publish-cancel">取消</button>
+					<button type="submit" class="button-primary" id="publish-submit">发布</button>
+				</div>
+			</form>
+		</dialog>
 	</body>
 </html>
+
+<script>
+	const publishButton = document.querySelector<HTMLButtonElement>('#publish-button');
+	const publishDialog = document.querySelector<HTMLDialogElement>('#publish-dialog');
+	const publishForm = document.querySelector<HTMLFormElement>('#publish-form');
+	const publishUrlInput = document.querySelector<HTMLInputElement>('#publish-url');
+	const publishTokenInput = document.querySelector<HTMLInputElement>('#publish-token');
+	const publishError = document.querySelector<HTMLParagraphElement>('#publish-error');
+	const publishCancelButton = document.querySelector<HTMLButtonElement>('#publish-cancel');
+	const publishSubmitButton = document.querySelector<HTMLButtonElement>('#publish-submit');
+
+	if (
+		publishButton &&
+		publishDialog &&
+		publishForm &&
+		publishUrlInput &&
+		publishTokenInput &&
+		publishError &&
+		publishCancelButton &&
+		publishSubmitButton
+	) {
+		const showError = (message: string) => {
+			publishError.textContent = message;
+			publishError.hidden = false;
+		};
+
+		publishButton.addEventListener('click', () => {
+			publishForm.reset();
+			publishTokenInput.value = localStorage.getItem('publish_token') ?? '';
+			publishError.hidden = true;
+			publishDialog.showModal();
+		});
+
+		publishCancelButton.addEventListener('click', () => publishDialog.close());
+
+		publishForm.addEventListener('submit', async (event) => {
+			event.preventDefault();
+
+			const url = publishUrlInput.value.trim();
+			if (!url) {
+				showError('请粘贴文章链接。');
+				return;
+			}
+
+			const token = publishTokenInput.value.trim();
+			publishError.hidden = true;
+			publishSubmitButton.disabled = true;
+			publishSubmitButton.textContent = '发布中…';
+
+			try {
+				const response = await fetch('/api/publish', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'x-publish-token': token,
+					},
+					body: JSON.stringify({ url }),
+				});
+
+				if (response.ok) {
+					localStorage.setItem('publish_token', token);
+					publishDialog.close();
+					location.reload();
+					return;
+				}
+
+				const data = (await response.json().catch(() => null)) as { error?: string } | null;
+				if (response.status === 401) {
+					showError(data?.error ?? '口令不正确，请输入发布口令后重试。');
+					publishTokenInput.focus();
+				} else {
+					showError(data?.error ?? '发布失败，请稍后再试。');
+				}
+			} catch {
+				showError('网络异常，请稍后再试。');
+			} finally {
+				publishSubmitButton.disabled = false;
+				publishSubmitButton.textContent = '发布';
+			}
+		});
+	}
+</script>
 
 <style>
 	:global(*) {
@@ -154,6 +259,29 @@ try {
 		font-size: 18px;
 		font-weight: 700;
 		text-decoration: none;
+	}
+
+	.header-actions {
+		display: flex;
+		gap: 16px;
+		align-items: center;
+	}
+
+	.publish-button {
+		padding: 8px 20px;
+		color: #ffffff;
+		background: #4f7455;
+		border: none;
+		border-radius: 999px;
+		font-family: inherit;
+		font-size: 14px;
+		font-weight: 700;
+		cursor: pointer;
+		transition: background 160ms ease;
+	}
+
+	.publish-button:hover {
+		background: #44654a;
 	}
 
 	.hero {
@@ -305,6 +433,105 @@ try {
 		font-size: 13px;
 	}
 
+	.publish-dialog {
+		width: min(440px, calc(100vw - 40px));
+		padding: 0;
+		background: #f7f6f1;
+		border: 1px solid #e2e5df;
+		border-radius: 16px;
+		box-shadow: 0 24px 64px rgb(23 32 25 / 20%);
+	}
+
+	.publish-dialog::backdrop {
+		background: rgb(23 32 25 / 40%);
+	}
+
+	.publish-dialog form {
+		padding: 28px;
+	}
+
+	.publish-dialog h2 {
+		margin-bottom: 8px;
+		font-size: 22px;
+	}
+
+	.dialog-hint {
+		margin-bottom: 20px;
+		color: #687768;
+		font-size: 14px;
+		line-height: 1.7;
+	}
+
+	.field {
+		display: block;
+		margin-bottom: 16px;
+	}
+
+	.field > span {
+		display: block;
+		margin-bottom: 6px;
+		color: #566158;
+		font-size: 13px;
+		font-weight: 700;
+	}
+
+	.field input {
+		width: 100%;
+		padding: 10px 12px;
+		color: #172019;
+		background: #ffffff;
+		border: 1px solid #d9ddd4;
+		border-radius: 10px;
+		font-family: inherit;
+		font-size: 14px;
+	}
+
+	.field input:focus {
+		outline: 2px solid #adc5a8;
+		outline-offset: 1px;
+	}
+
+	.dialog-error {
+		margin: 0 0 16px;
+		color: #a8442f;
+		font-size: 13px;
+	}
+
+	.dialog-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 12px;
+		margin-top: 20px;
+	}
+
+	.button-ghost {
+		padding: 9px 18px;
+		color: #566158;
+		background: transparent;
+		border: 1px solid #d9ddd4;
+		border-radius: 999px;
+		font-family: inherit;
+		font-size: 14px;
+		cursor: pointer;
+	}
+
+	.button-primary {
+		padding: 9px 22px;
+		color: #ffffff;
+		background: #4f7455;
+		border: none;
+		border-radius: 999px;
+		font-family: inherit;
+		font-size: 14px;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.button-primary:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
+
 	@media (max-width: 760px) {
 		.article-grid {
 			grid-template-columns: 1fr;
@@ -314,8 +541,12 @@ try {
 			padding: 52px 0;
 		}
 
-		.site-header > span {
+		.header-actions > span {
 			display: none;
+		}
+
+		.publish-dialog form {
+			padding: 22px 20px;
 		}
 	}
 </style>
